@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "CS602 Term Project – Node.js Shopping Cart App",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js"

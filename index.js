@@ -1,29 +1,26 @@
-// Import the Express framework for building the web server
-const express = require('express');
+// Import Express and dotenv using ES6 syntax
+import express from 'express';
+import dotenv from 'dotenv';
+import mongoose from 'mongoose';
 
-// Import the dotenv package to load environment variables from a .env file
-const dotenv = require('dotenv');
-
-// Load the variables defined in the .env file into process.env
+// Load environment variables
 dotenv.config();
 
-// Create an Express app nstance
+// Create the Express app 
 const app = express();
 
-// Set the server port from .env or default to 3000
+// Use enviroment variable or fallback to 3000
 const PORT = process.env.PORT || 3000;
 
-// Middleware to automatically parse incoming JSON in request bodies
+// Middleware to parse incoming JSON
 app.use(express.json());
 
-// Define a basic route for the homepage (GET request to '/')
-// When someone visits localhost:3000/, they'll see this message
+// Sample route for the homepage
 app.get('/', (req, res) => {
     res.send('Shopping Cart API is running!');
 });
 
-// Start the server and listen on the defined port
-// When the server starts, log a message to the terminal
+// Start the server
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
