@@ -1,7 +1,7 @@
 // Import Express and dotenv using ES6 syntax
 import express from 'express';
 import dotenv from 'dotenv';
-import mongoose from 'mongoose';
+// import mongoose from 'mongoose';
 
 // Load environment variables
 dotenv.config();
