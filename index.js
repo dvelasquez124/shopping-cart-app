@@ -7,10 +7,7 @@ import mongoose from 'mongoose';
 dotenv.config();
 
 // Connect to MongoDB using connection string in .env file
-mongoose.connect(process.env.MONGO_URI, {
-    useNewUrlParser: true, // avoids deprecation warning
-    useUnifiedTopology: true // uses the new connection engine
-})
+mongoose.connect(process.env.MONGO_URI)
 .then(() => {
     console.log('Connected to MongoDB');
 })
