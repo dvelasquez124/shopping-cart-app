@@ -2,9 +2,15 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import productRoutes from './routes/productRoutes.js';
+
+
 
 // Load environment variables
 dotenv.config();
+
+// Create the Express app 
+const app = express();
 
 // Connect to MongoDB using connection string in .env file
 mongoose.connect(process.env.MONGO_URI)
@@ -15,19 +21,20 @@ mongoose.connect(process.env.MONGO_URI)
     console.error('MongoDB connection error:', err);
 });
 
-// Create the Express app 
-const app = express();
-
-// Use enviroment variable or fallback to 3000
-const PORT = process.env.PORT || 3000;
 
 // Middleware to parse incoming JSON
 app.use(express.json());
+
+// Register product routes after app is defined
+app.use('/api/products', productRoutes);
 
 // Sample route for the homepage
 app.get('/', (req, res) => {
     res.send('Shopping Cart API is running!');
 });
+
+// Use enviroment variable or fallback to 3000
+const PORT = process.env.PORT || 3000;
 
 // // temp import
 // import Product from './models/Product.js';
