@@ -5,6 +5,7 @@ import express from 'express';
 import bcrypt from 'bcrypt';
 import passport from 'passport';
 import User from '../models/User.js';
+import { ensureAuthenticated, ensureAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -108,6 +109,15 @@ router.get('/me', (req, res) => {
         return res.status(401).json({ authenticated: false });
     }
     return res.json({ authenticated: true, user: safeUser(req.user) });
+});
+
+// quick sanity checks
+router.get('/secure-ping', ensureAuthenticated, (req, res) => {
+    res.json({ ok: true, user: safeUser(req.user) });
+});
+
+router.get('/admin-ping', ensureAdmin, (req, res) => {
+    res.json({ ok: true });
 });
 
 export default router;
