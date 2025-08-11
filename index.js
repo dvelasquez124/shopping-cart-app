@@ -6,11 +6,11 @@ import session from 'express-session';
 import passport from 'passport';
 
 
-
 // Import routes
 import productRoutes from './routes/productRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import './config/passportConfig.js'; // load strategy
+import orderRoutes from './routes/orderRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -46,6 +46,8 @@ app.use(express.urlencoded({ extended: false }));
 app.use('/api/products', productRoutes);
 
 app.use('/auth', authRoutes);
+
+app.use('/api/orders', orderRoutes);
 
 // Sample homepage route
 app.get('/', (req, res) => {

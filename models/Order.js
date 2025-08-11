@@ -1,4 +1,13 @@
+// models/Order.js
 import mongoose from 'mongoose';
+
+// Snapshot of what was purchased at that moment
+const orderItemSchema = new mongoose.Schema({
+    product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+    name: { type: String, required: true }, // product name at purchase time
+    priceAtPurchase: { type: Number, require: true }, // product price at purchase time
+    quantity: { type: Number, min: 1, required: true }
+}, { _id: false });
 
 // This schema represents a customer's order
 const orderSchema = new mongoose.Schema({
@@ -7,24 +16,17 @@ const orderSchema = new mongoose.Schema({
         ref: 'User',
         required: true
     },
-    items: [ // an array of products in the order
-        {
-            product: {
-                type: mongoose.Schema.Types.ObjectId, // reference to a Product
-                ref: 'Product'
-            },
-            quantity: Number, // how many of this product
-            priceAtPurchase: Number // price at the time of purchase
-
-        }
-    ],
-    createdAt: {
-        type: Date,
-        default: Date.now
+    items: {
+        type: [orderItemSchema],
+        required: true,
+        validate: v => Array.isArray(v) && v.length > 0
+    },
+    subtotal: { type: Number, required: true, min: 0 },
+    status: {
+        type: String,
+        enum: ['placed','processing','shipped','delivered','cancelled'],
+        default: 'placed'
     }
-});
+}, { timestamps: true }); // Adds createdAt + updatedAt automatically
 
-// Create the Order model
-const Order = mongoose.model('Order', orderSchema);
-
-export default Order;
+export default mongoose.model('Order', orderSchema);
