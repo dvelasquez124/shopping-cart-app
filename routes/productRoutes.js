@@ -9,12 +9,7 @@ import mongoose from 'mongoose'; // for ObjectId validation
 
 const router = express.Router();
 
-/** 
- * @desc Get all products
- * @route GET /api/products
- * @access Public
- */
-
+// GET /api/products (public)
 router.get('/', async(req, res) => {
     try {
         // Fetch all products from the database
@@ -26,18 +21,14 @@ router.get('/', async(req, res) => {
     }
 });
 
-/**
- * @desc Search products by name or description
- * @route GET /api/products/search?name=...
- * @access Public
- */
+// GET /api/products/search?name-... (public)
 router.get('/search', async (req, res) => {
     try {
         const { name } = req.query;
 
         // If no search term is provided, return a 400 error
         if (!name) {
-            return res.status(400),json({ message: 'Please provide a search term' });
+            return res.status(400).json({ message: 'Please provide a search term' });
         }
 
         // Find products where name or description contains the search term (case-insensitive)
@@ -55,26 +46,22 @@ router.get('/search', async (req, res) => {
     }
 });
 
-/**
- * @desc Get products in a price range
- * @route GET /api/products/range?min=xx&max=yy
- * @access Public
- */
+// GET /api/products/range?min=&max= (public)
 router.get('/range', async (req, res) => {
     try {
-        // If no min or max is provided, default to all prices
-        const min = parseFloat(req.query.min) || 0;
-        const max = parseFloat(req.query.max) || Number.MAX_SAFE_INTEGER;
+        let min = Number.isFinite(parseFloat(req.query.min)) ?  parseFloat(req.query.min) : 0;
+        let max = Number.isFinite(parseFloat(req.query.max)) ? parseFloat(req.query.max) : Number.MAX_SAFE_INTEGER;
+
+        // auto-swap is user flips them
+        if (min > max) [min, max] = [max, min];
+    
 
         // Find products where price is between min and max
-        const products = await Product.find({
-            price: { $gte: min, $lte: max }
-        });
-
-        res.json(products);
+        const products = await Product.find({ price: { $gte: min, $lte: max } }).lean().exec();
+        return res.json(products);
     } catch (error) {
         console.error('Error fetching products by range: ', error);
-        res.status(500).json({ message: 'Server error '});
+        return res.status(500).json({ message: 'Server error' });
     }
 });
 
@@ -88,11 +75,11 @@ router.post('/', ensureAdmin, async (req,res) => {
         if (!name || typeof price !== 'number' || typeof quantityInStock !== 'number') {
             return res.status(400).json({ error: 'name, price (number), and quantityInStock (number) are required.' })
         }
-        if (price <  0 || !Number.isFinite(price)) {
+        if (!Number.isFinite(price) || price < 0) {
             return res.status(400).json({ error: 'price must be a non-negative number.' });
         }
         if (!Number.isInteger(quantityInStock) || quantityInStock < 0) {
-            return res.status(400).json({ error: 'quantityInStock must be an integer >= 0.'});
+            return res.status(400).json({ error: 'quantityInStock must be an integer >= 0.' });
         }
 
         const product = await Product.create({ name, description, price, quantityInStock });
@@ -112,7 +99,7 @@ router.put('/:id', ensureAdmin, async (req, res) => {
         }
 
         // only allow specific fields 
-        const allow = ['name', 'description', 'price', 'quanitityInStock'];
+        const allow = ['name', 'description', 'price', 'quantityInStock'];
         const updates = {};
         for (const k of allow) if (k in req.body) updates[k] = req.body[k];
 
@@ -153,7 +140,7 @@ router.delete('/:id', ensureAdmin, async (req, res) => {
         console.error('Delete product error:', err);
         return res.status(500).json({ error: 'Failed to delete product.' });
     }
-})
+});
 
 
 export default router;
