@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import session from 'express-session';
 import passport from 'passport';
+import customerRoutes from './routes/customerRoutes.js';
 
 
 // Import routes
@@ -48,6 +49,8 @@ app.use('/api/products', productRoutes);
 app.use('/auth', authRoutes);
 
 app.use('/api/orders', orderRoutes);
+
+app.use('/api/customers', customerRoutes);
 
 // Sample homepage route
 app.get('/', (req, res) => {
