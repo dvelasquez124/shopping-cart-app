@@ -84,7 +84,7 @@ router.post('/login', (req, res, next) => {
                 user: safeUser(user),
             });
         });
-    }) (req, res, next);
+    })(req, res, next);
 });
 
 // GET /auth/logout
@@ -105,7 +105,7 @@ router.get('/logout', (req, res) => {
 
 // GET /auth/me (quick sanity check: am I logged in?)
 router.get('/me', (req, res) => {
-    if (!req.isAuthenticated || !req.isAuthenticated()) {
+    if (!(req.isAuthenticated && req.isAuthenticated())) {
         return res.status(401).json({ authenticated: false });
     }
     return res.json({ authenticated: true, user: safeUser(req.user) });
