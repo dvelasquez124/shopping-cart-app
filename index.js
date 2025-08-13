@@ -6,6 +6,11 @@ import session from 'express-session';
 import passport from 'passport';
 import customerRoutes from './routes/customerRoutes.js';
 
+// GraphQL Yoga
+import { createYoga, createSchema } from 'graphql-yoga';
+import { typeDefs } from './graphql/typeDefs.js';
+import { resolvers } from './graphql/resolvers.js';
+
 
 // Import routes
 import productRoutes from './routes/productRoutes.js';
@@ -43,7 +48,23 @@ app.use(passport.session());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Register product routes after app is defined
+// --- GraphQL (Yoga) ---
+// Build GraphQlSchema from our SDL + resolvers
+const schema = createSchema({ typeDefs, resolvers });
+
+// Create Yoga request handler
+const yoga = createYoga({
+    schema,
+    graphqlEndpoint: '/graphql', // where the IDE + endpoint live
+    // Pass logged-in user to resolvers
+    context: ({ request }) => ({ user: request.user ?? null }),
+});
+
+// Mount it on Express (for built-in GraphiQL UI)
+app.use('/graphql', yoga);
+
+
+// REST routes
 app.use('/api/products', productRoutes);
 
 app.use('/auth', authRoutes);
