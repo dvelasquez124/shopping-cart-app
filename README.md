@@ -6,7 +6,7 @@
 - REST (public product endpoints) + GraphQL (Yoga at /graphql)
 - Handlebars views (Bootstrap CDN)
 
-Base URL: http://localhost:3000
+Base URL: http://localhost:3000  
 Node: v20.18.x
 
 ---
@@ -67,12 +67,12 @@ Public (no auth):
 
 Auth flow:
 
-1.  POST /auth/login
+1.  POST /auth/login  
     Body:
 
         { "email": "customer@example.com", "password": "customer123" }
 
-2.  GET /auth/me (quick check)
+2.  GET /auth/me (quick check)  
 3.  POST /api/orders (place order)
 
         { "items": [ { "productId": "<id>", "quantity": 2 } ] }
@@ -128,3 +128,4 @@ Note: use `id` (virtual) in GraphQL, not `_id`.
 2. GraphQL: products, searchProducts (with var), productsInPriceRange
 3. UI: Home → Login (customer) → place order → My Orders
 4. UI: Login (admin) → Admin → Customer Orders (update/delete) → Admin Products (CRUD)
+

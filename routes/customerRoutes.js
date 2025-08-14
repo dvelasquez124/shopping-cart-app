@@ -11,7 +11,8 @@ const router = express.Router();
 
 /**
  * GET /api/customers  (admin)
- * - return basic info for all users (no passwords)
+ * Returns basic info for all users (no passwords).
+ * NOTE: This includes admins too; the UI can filter if needed.
  */
 router.get('/', ensureAdmin, async (req, res) => {
   try {
@@ -22,7 +23,7 @@ router.get('/', ensureAdmin, async (req, res) => {
       .exec();
 
     // normalize _id -> id (string) for cleaner API output
-    const list = users.map(u => ({
+    const list = users.map((u) => ({
       id: String(u._id),
       name: u.name,
       email: u.email,
@@ -39,30 +40,30 @@ router.get('/', ensureAdmin, async (req, res) => {
 
 /**
  * GET /api/customers/:id/orders  (admin)
- * - return the selected user and all of their orders (newest first)
+ * Returns the selected user + all of their orders (newest first).
  */
 router.get('/:id/orders', ensureAdmin, async (req, res) => {
   try {
     const { id } = req.params;
 
-    // quick id check to avoid CastError
+    // quick format check to avoid CastError
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: `Invalid user id: ${id}` });
     }
 
-    // make sure user exists (basic fields only)
+    // make sure the user exists (basic fields only)
     const user = await User.findById(id, 'name email role').lean().exec();
     if (!user) return res.status(404).json({ error: 'User not found.' });
 
-    // load orders for that user
+    // load orders for that user (and show product name/price in each item)
     const orders = await Order.find({ user: id })
       .sort({ createdAt: -1 })
-      .populate({ path: 'items.product', select: 'name price' }) // show product name/price on each item
-      .select('-__v')                        // hide version key
-      .lean({ virtuals: true })              // include virtual "id" if defined on the model
+      .populate({ path: 'items.product', select: 'name price' })
+      .select('-__v')                 // versionKey is off, but keeping this is harmless
+      .lean({ virtuals: true })       // include virtual "id" if defined on the model
       .exec();
 
-    // respond with both the user header info and the orders
+    // send back a simple header + list
     return res.json({
       user: { id: String(user._id), name: user.name, email: user.email, role: user.role },
       count: orders.length,

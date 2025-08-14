@@ -3,39 +3,32 @@
 
 import mongoose from 'mongoose';
 
-// This schema describes the structure of each product in the database
-const productSchema = new mongoose.Schema({
-    name: { type: String, required: true, trim: true }, // product name is required
-    description: { type: String, default: '' }, // optional product description
-    price: {
-        type: Number,
-        required: true, // product price is required
-        min: [0, 'Price must be >= 0'],
-    },
-    quantityInStock: {
-        type: Number,
-        required: true,
-        min: [0, 'Stock must be >= 0'],
-    },
-},
-    {
-        timestamps: true, // Automatically add createdAt and updatedAt fields
-    }
+// Define the shape of a product in MongoDB
+const productSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true },     // product name is required
+    description: { type: String, default: '' },             // short text about the product
+    price: { type: Number, required: true, min: 0 },        // price must be >= 0
+    quantityInStock: { type: Number, required: true, min: 0 } // stock must be >= 0
+  },
+  {
+    timestamps: true,   // adds createdAt / updatedAt
+    // versionKey: false // OPTIONAL: uncomment to hide "__v" everywhere
+  }
 );
 
+// Text search on name + description (used by /api/products/search)
 productSchema.index({ name: 'text', description: 'text' });
 
-// Friendly "id" virtual (clients can use _id or id)
+// Friendly "id" virtual (so clients can use id instead of _id)
 productSchema.virtual('id').get(function () {
-    return this._id.toString();
+  return this._id.toString();
 });
 
-// Make virtuals appear when NOT using .lean()
+// Make virtuals show up when converting docs to JSON/objects
 productSchema.set('toJSON', { virtuals: true });
 productSchema.set('toObject', { virtuals: true });
 
-// Create a model called 'Product' based on the schema
+// Build and export the model
 const Product = mongoose.model('Product', productSchema);
-
-// Export the model so it can be used elsewhere in the app
 export default Product;

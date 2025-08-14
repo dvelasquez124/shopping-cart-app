@@ -165,34 +165,54 @@ router.put('/:id', ensureAdmin, async (req, res) => {
   }
 });
 
-// DELETE /api/orders/:id  (admin)
-// - delete order and put the stock back
+// DELETE /api/orders/:id --> delete and restock (admin only)
 router.delete('/:id', ensureAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ error: `invalid order id: ${id}` });
+    try {
+      const { id } = req.params;
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ error: `Invalid order id: ${id}` });
+      }
+  
+      // get the order so we know what to restock
+      const order = await Order.findById(id).lean();
+      if (!order) return res.status(404).json({ error: 'Order not found' });
+  
+      let restocked = [];
+  
+      // bump stock back for each item in the order
+      if (Array.isArray(order.items) && order.items.length) {
+        const ops = order.items.map((item) => ({
+          updateOne: {
+            filter: { _id: item.product },
+            update: { $inc: { quantityInStock: item.quantity } },
+          },
+        }));
+        await Product.bulkWrite(ops);
+  
+        // fetch updated products so we can show the new counts
+        const ids = order.items.map((i) => i.product);
+        const updated = await Product.find({ _id: { $in: ids } })
+          .select('name quantityInStock')
+          .lean();
+  
+        restocked = updated.map((p) => ({
+          id: String(p._id),
+          name: p.name,
+          quantityInStock: p.quantityInStock,
+        }));
+      }
+  
+      // finally remove the order
+      await Order.deleteOne({ _id: id });
+  
+      return res.json({
+        message: 'Order deleted and items restocked.',
+        restocked, // quick confirmation of new stock levels
+      });
+    } catch (err) {
+      console.error('Delete order error:', err);
+      return res.status(500).json({ error: 'Failed to delete order.' });
     }
-
-    const order = await Order.findById(id).lean().exec();
-    if (!order) return res.status(404).json({ error: 'order not found' });
-
-    if (Array.isArray(order.items) && order.items.length) {
-      const ops = order.items.map(item => ({
-        updateOne: {
-          filter: { _id: item.product },
-          update: { $inc: { quantityInStock: item.quantity } },
-        },
-      }));
-      await Product.bulkWrite(ops);
-    }
-
-    await Order.deleteOne({ _id: id }).exec();
-    return res.json({ message: 'order deleted and stock restored' });
-  } catch (err) {
-    console.error('delete order error:', err);
-    return res.status(500).json({ error: 'failed to delete order' });
-  }
-});
+  });
 
 export default router;

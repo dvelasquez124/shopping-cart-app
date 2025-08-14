@@ -8,11 +8,12 @@ import { ensureAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// helper: escape special chars so our regex doesn't break
+// helper: escape special chars so regex doesn't break
 const escapeForRegex = (s = '') => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// GET /api/products (public)
-// list all products
+/* ------------------------------- Public APIs ------------------------------- */
+
+// GET /api/products (public) → list all products
 router.get('/', async (req, res) => {
   try {
     const products = await Product.find({})
@@ -66,8 +67,7 @@ router.get('/range', async (req, res) => {
 
 /* ----------------------------- Admin-only CRUD ----------------------------- */
 
-// POST /api/products (admin)
-// create a product
+// POST /api/products (admin) → create a product
 router.post('/', ensureAdmin, async (req, res) => {
   try {
     const { name, description = '', price, quantityInStock } = req.body;
@@ -98,8 +98,7 @@ router.post('/', ensureAdmin, async (req, res) => {
   }
 });
 
-// PUT /api/products/:id (admin)
-// update allowed fields only
+// PUT /api/products/:id (admin) → update allowed fields only
 router.put('/:id', ensureAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -107,10 +106,12 @@ router.put('/:id', ensureAdmin, async (req, res) => {
       return res.status(400).json({ error: `Invalid product id: ${id}` });
     }
 
+    // allow-list of fields we accept
     const allow = ['name', 'description', 'price', 'quantityInStock'];
     const updates = {};
     for (const k of allow) if (k in req.body) updates[k] = req.body[k];
 
+    // validate numbers if provided
     if ('price' in updates) {
       if (typeof updates.price !== 'number' || !Number.isFinite(updates.price) || updates.price < 0) {
         return res.status(400).json({ error: 'price must be a non-negative number.' });
@@ -135,8 +136,7 @@ router.put('/:id', ensureAdmin, async (req, res) => {
   }
 });
 
-// DELETE /api/products/:id (admin)
-// delete a product
+// DELETE /api/products/:id (admin) → delete a product
 router.delete('/:id', ensureAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -158,3 +158,4 @@ router.delete('/:id', ensureAdmin, async (req, res) => {
 });
 
 export default router;
+

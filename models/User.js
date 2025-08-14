@@ -3,18 +3,22 @@
 
 import mongoose from 'mongoose';
 
-// This schema describes a user in the system
+// Define what a user looks like in MongoDB
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true }, // full name
+
     email: {
       type: String,
-      required: true,       // required to log in
-      unique: true,         // emails should be unique
+      required: true,     // needed to log in
+      unique: true,       // creates a unique index in Mongo
       trim: true,
-      lowercase: true,      // normalize so uniqueness works as expected
+      lowercase: true,    // normalize so "A@B.com" == "a@b.com"
+      // Note: 'unique' is not a validator; it's an index. We still check duplicates in code.
     },
-    passwordHash: { type: String, required: true }, // bcrypt hash (set during registration)
+
+    passwordHash: { type: String, required: true }, // bcrypt hash (set at register time)
+
     role: {
       type: String,
       enum: ['customer', 'admin'], // two roles only
@@ -22,25 +26,25 @@ const userSchema = new mongoose.Schema(
     },
   },
   {
-    timestamps: true,  // createdAt / updatedAt
-    versionKey: false, // hide __v in JSON
+    timestamps: true,   // adds createdAt / updatedAt
+    versionKey: false,  // hide __v
   }
 );
 
-// virtual: friendly id (keeps Mongo _id too)
+// Virtual: friendly string id (Mongo _id still exists)
 userSchema.virtual('id').get(function () {
   return this._id.toString();
 });
 
-// virtual: isAdmin flag so code can check user.isAdmin
+// Virtual: easy boolean for templates / checks
 userSchema.virtual('isAdmin').get(function () {
   return this.role === 'admin';
 });
 
-// include virtuals when converting to JSON/objects (when not using .lean())
+// Include virtuals when converting to JSON/objects (when not using .lean())
 userSchema.set('toJSON', { virtuals: true });
 userSchema.set('toObject', { virtuals: true });
 
-// Create the User model from the schema
+// Build and export the model
 const User = mongoose.model('User', userSchema);
 export default User;
