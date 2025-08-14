@@ -9,21 +9,20 @@ import User from '../models/User.js'; // default export
 
 const LocalStrategy = passportLocal.Strategy; // Assigning strategy from passport-local to LocalStrategy
 
-// What gets stored in the session cookie: just the user id
-passport.serializeUser((user, done) => {
-    done(null, user._id);
-});
 
-// On each request with a session, hydrate req.user from DB
+
+// On each request with a session, load a lightweight user which includes email
 passport.deserializeUser(async (id, done) => {
     try {
-        const user = await User.findById(id).exec();
-        done(null, user);
+      // pick only safe fields we need in views
+      const user = await User.findById(id, 'name email role').lean().exec();
+      if (user) user.isAdmin = user.role === 'admin';
+      done(null, user); // now req.user has name/email/role
     } catch (err) {
-        done(err);
+      done(err);
     }
-});
-
+  });
+  
 // LocalStrategy: try to find the user by email, then compare passwords
 passport.use(
     new LocalStrategy(
@@ -34,11 +33,11 @@ passport.use(
     async (email, password, done) => {
         try {
             // normalize email a bit to reduce "works on my machine" bugs
-            const normalizedEmail = (email || '').trim().toLowerCase();
+            const normalizedEmail = String(email).trim().toLowerCase();
 
             const user = await User.findOne({ email: normalizedEmail }).exec();
             if (!user) {
-                return done(null, false, { message: 'No user found with that email.' });
+                return done(null, false, { message: 'No account with that email.' });
             }
 
             const ok = await bcrypt.compare(password, user.passwordHash);
@@ -53,3 +52,8 @@ passport.use(
         }
     }
 ));
+
+// store only the user id in the session
+passport.serializeUser((user, done) => {
+    done(null, user._id);
+});

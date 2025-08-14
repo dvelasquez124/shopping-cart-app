@@ -62,47 +62,78 @@ router.post('/register', async (req, res) => {
 });
 
 // POST /auth/login
-// Body: { email, password }
-// returns JSON (we’ll add the form/redirect version in the views step)
+// supports: JSON (Postman) and HTML form (login page)
 router.post('/login', (req, res, next) => {
-  passport.authenticate('local', (err, user, info) => {
-    if (err) {
-      console.error('Login error:', err);
-      return res.status(500).json({ error: 'Login failed.' });
-    }
-    if (!user) {
-      // 401 = unauthorized (bad creds)
-      return res.status(401).json({ error: info?.message || 'Invalid credentials.' });
-    }
-
-    // create session
-    req.login(user, (loginErr) => {
-      if (loginErr) {
-        console.error('Session error:', loginErr);
-        return res.status(500).json({ error: 'Could not establish session.' });
+    const isFormPost = req.is('application/x-www-form-urlencoded');
+  
+    passport.authenticate('local', (err, user, info) => {
+      if (err) {
+        console.error('Login error:', err);
+        return isFormPost
+          ? res.redirect('/login?error=1')
+          : res.status(500).json({ error: 'Login failed.' });
       }
-      return res.json({
-        message: 'Login successful.',
-        user: safeUser(user),
+      if (!user) {
+        // wrong creds
+        return isFormPost
+          ? res.redirect('/login?error=1')
+          : res.status(401).json({ error: info?.message || 'Invalid credentials.' });
+      }
+  
+      req.login(user, (loginErr) => {
+        if (loginErr) {
+          console.error('Session error:', loginErr);
+          return isFormPost
+            ? res.redirect('/login?error=1')
+            : res.status(500).json({ error: 'Could not establish session.' });
+        }
+  
+        // decide where to go for the form flow
+        const isAdmin = user.role === 'admin' || user.isAdmin === true;
+        if (isFormPost) {
+          return res.redirect(isAdmin ? '/admin' : '/my-orders');
+        }
+  
+        // JSON flow (Postman)
+        return res.json({
+          message: 'Login successful.',
+          user: {
+            id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+          },
+        });
       });
-    });
-  })(req, res, next);
-});
+    })(req, res, next);
+  });
+  
 
 // GET /auth/logout
-// destroys session + clears cookie
+// browser: redirect to home
+// Postman (Accept: application/json): return JSON
 router.get('/logout', (req, res) => {
-  req.logout((err) => {
-    if (err) {
-      console.error('Logout error:', err);
-      return res.status(500).json({ error: 'Logout failed.' });
-    }
-    req.session?.destroy(() => {
-      res.clearCookie('connect.sid'); // default session cookie name
-      return res.json({ message: 'Logged out successfully.' });
+    req.logout((err) => {
+      if (err) {
+        console.error('Logout error:', err);
+        // if the browser posted a form, send them back to login with error
+        const wantsJSON = req.get('accept')?.includes('application/json');
+        return wantsJSON
+          ? res.status(500).json({ error: 'Logout failed.' })
+          : res.redirect('/login?error=1');
+      }
+      req.session?.destroy(() => {
+        res.clearCookie('connect.sid');
+  
+        const wantsJSON = req.get('accept')?.includes('application/json');
+        if (wantsJSON) return res.json({ message: 'Logged out successfully.' });
+  
+        // normal browser flow -> go to home
+        return res.redirect('/');
+      });
     });
   });
-});
+  
 
 // GET /auth/me
 // quick “am I logged in?”

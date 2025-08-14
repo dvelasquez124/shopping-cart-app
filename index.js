@@ -16,6 +16,11 @@ import session from 'express-session';
 import passport from 'passport';
 import customerRoutes from './routes/customerRoutes.js';
 
+import viewRoutes from './routes/viewRoutes.js';
+
+
+
+
 // GraphQL Yoga
 import { createYoga, createSchema } from 'graphql-yoga';
 import { typeDefs } from './graphql/typeDefs.js';
@@ -33,6 +38,26 @@ dotenv.config();
 
 // Create the Express app 
 const app = express();
+
+// resolve __dirname
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { engine } from 'express-handlebars';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Set up handlebars
+app.engine('hbs', engine({ 
+    extname: '.hbs', 
+    defaultLayout: 'main', 
+    // helpers for views
+    helpers: {
+        eq: (a, b) => String(a) === String(b), // used for <option selected>
+    }
+}));
+app.set('view engine', 'hbs');
+app.set('views', path.join(__dirname, 'views'));
 
 // Connect to MongoDB using connection string in .env 
 mongoose.connect(process.env.MONGO_URI)
@@ -65,6 +90,7 @@ app.use((req, res, next) => {
     res.locals.currentUser = req.user || null;
     res.locals.isAuthenticated = !!req.user;
     res.locals.isAdmin = !!(req.user && (req.user.role === 'admin' || req.user.isAdmin === true));
+    res.locals.showMyOrdersNav = !!(req.user && req.user.role === 'customer'); // only customers see my orders
     next();
 });
 
@@ -96,12 +122,20 @@ app.use('/api/orders', orderRoutes);
 
 app.use('/api/customers', customerRoutes);
 
-// Sample homepage route
-app.get('/', (req, res) => {
-    res.send('Shopping Cart API is running!');
-});
+app.use(viewRoutes);
 
-// Start the server
+/// 404 for unknown routes 
+app.use((req, res) => {
+    res.status(404).send('404 Not Found');
+  });
+  
+  // Generic 500 handler 
+  app.use((err, req, res, next) => {
+    console.error('Unhandled error:', err);
+    res.status(500).send('500 Server Error');
+  });
+  
+
 // Use environment variable or fallback to 3000
 const PORT = process.env.PORT || 3000;
 

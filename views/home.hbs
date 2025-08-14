@@ -1,0 +1,95 @@
+{{!-- views/home.hbs --}}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Products</h1>
+    {{#if isAuthenticated}}
+    <span class="text-muted small">Signed in as {{currentUser.email}}</span>
+    {{/if}}
+</div>
+
+{{#if hasProducts}}
+<form id="orderForm">
+    <div class="row g-3">
+        {{#each products}}
+        <div class="col-12 col-md-6 col-lg-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h2 class="h6 card-title mb-1">{{this.name}}</h2>
+                    <div class="text-muted small mb-2">{{this.description}}</div>
+                    <div class="fw-semibold mb-2">${{this.priceFmt}}</div>
+                    {{#if ../showMyOrdersNav}}
+                    {{#if this.outOfStock}}
+                    <span class="badge text-bg-secondary">Out of stock</span>
+                    {{else}}
+                    <div class="small text-muted mb-1">{{this.stockLabel}}</div>
+                    <label class="form-label small mb-1">Qty</label>
+                    <input class="form-control form-control-sm qty-input" type="number" min="0" step="1" value="0"
+                        data-product-id="{{this._id}}" />
+                    {{/if}}
+                    {{/if}}
+                </div>
+
+            </div>
+        </div>
+        {{/each}}
+    </div>
+
+    {{#if showMyOrdersNav}}
+    <div class="d-flex align-items-center gap-2 mt-3">
+        <button type="submit" class="btn btn-primary">Place Order</button>
+        <span id="orderMsg" class="small text-muted"></span>
+    </div>
+    {{else}}
+    <div class="alert alert-info mt-3">
+        Please <a href="/login">log in</a> as a customer to place an order.
+    </div>
+    {{/if}}
+</form>
+{{else}}
+<div class="alert alert-info">No products yet. Add some via Admin or seed script.</div>
+{{/if}}
+
+<script>
+    // Collect all qty > 0 and call POST /api/orders
+    const form = document.getElementById('orderForm');
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const msg = document.getElementById('orderMsg');
+            const inputs = Array.from(document.querySelectorAll('.qty-input'));
+            const items = [];
+
+            for (const input of inputs) {
+                const qty = parseInt(input.value, 10);
+                if (Number.isInteger(qty) && qty > 0) {
+                    items.push({ productId: input.dataset.productId, quantity: qty });
+                }
+            }
+
+            if (!items.length) {
+                msg.textContent = 'Please enter a quantity above 0 for at least one product.';
+                return;
+            }
+
+            try {
+                msg.textContent = 'Placing order...';
+                const res = await fetch('/api/orders', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ items }),
+                });
+
+                if (res.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+
+                const out = await res.json();
+                if (!res.ok) throw new Error(out.error || 'Failed to place order');
+
+                window.location.href = '/my-orders';
+            } catch (err) {
+                msg.textContent = err.message;
+            }
+        });
+    }
+</script>

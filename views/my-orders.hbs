@@ -1,0 +1,46 @@
+{{!-- views/my-orders.hbs --}}
+<div class="mb-3">
+  <h1 class="h4">My Orders</h1>
+  <p class="text-muted">Signed in as {{#if currentUser}}{{currentUser.email}}{{else}}(unknown) {{/if}}</p>
+</div>
+
+{{#if hasOrders}}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Placed</th>
+          <th>Items</th>
+          <th>Subtotal</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each orders}}
+          <tr>
+            <td>{{this.createdAtFmt}}</td>
+            <td>
+              <ul class="mb-0">
+                {{#each this.items}}
+                  <li>
+                    {{#if this.product}}
+                      {{this.product.name}}
+                    {{else}}
+                      (product removed)
+                    {{/if}}
+                    × {{this.quantity}}
+                    — ${{this.priceAtPurchase}}
+                  </li>
+                {{/each}}
+              </ul>
+            </td>
+            <td>${{this.subtotalFmt}}</td>
+            <td><span class="badge bg-secondary text-uppercase">{{this.status}}</span></td>
+          </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+{{else}}
+  <div class="alert alert-info">You don’t have any orders yet.</div>
+{{/if}}
