@@ -134,8 +134,8 @@ app.use('/api/customers', customerRoutes);
 // Handlebars pages: home, login, my orders, admin pages
 app.use(viewRoutes);
 
-/* ----------------------------- Minimal error pages ------------------------- */
-// 404 for unknown routes (plain text, simple on purpose)
+/* ----------------------------- Simple error pages ------------------------- */
+// 404 for unknown routes
 app.use((req, res) => {
   res.status(404).send('404 Not Found');
 });
