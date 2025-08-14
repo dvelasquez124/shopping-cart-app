@@ -11,18 +11,25 @@ const router = express.Router();
 
 /**
  * GET /api/customers  (admin)
- * Returns basic info for all users (no passwords).
- * NOTE: This includes admins too; the UI can filter if needed.
+ * Default: show customers only (role === 'customer') to match the UI.
+ * Tip: add ?includeAdmins=1 to include admin accounts too.
  */
 router.get('/', ensureAdmin, async (req, res) => {
   try {
-    // only pick the fields we want to show
-    const users = await User.find({}, 'name email role createdAt')
+    // toggle via query param if you want admins included
+    const includeAdmins =
+      req.query.includeAdmins === '1' || req.query.includeAdmins === 'true';
+
+    // default filter = customers only
+    const filter = includeAdmins ? {} : { role: 'customer' };
+
+    // only pick basic fields (never send passwordHash)
+    const users = await User.find(filter, 'name email role createdAt')
       .sort({ createdAt: -1 })
       .lean()
       .exec();
 
-    // normalize _id -> id (string) for cleaner API output
+    // normalize _id → id for cleaner API output
     const list = users.map((u) => ({
       id: String(u._id),
       name: u.name,
@@ -59,11 +66,10 @@ router.get('/:id/orders', ensureAdmin, async (req, res) => {
     const orders = await Order.find({ user: id })
       .sort({ createdAt: -1 })
       .populate({ path: 'items.product', select: 'name price' })
-      .select('-__v')                 // versionKey is off, but keeping this is harmless
-      .lean({ virtuals: true })       // include virtual "id" if defined on the model
+      .select('-__v')
+      .lean({ virtuals: true })
       .exec();
 
-    // send back a simple header + list
     return res.json({
       user: { id: String(user._id), name: user.name, email: user.email, role: user.role },
       count: orders.length,
@@ -76,3 +82,4 @@ router.get('/:id/orders', ensureAdmin, async (req, res) => {
 });
 
 export default router;
+
