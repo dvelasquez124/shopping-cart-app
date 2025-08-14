@@ -1,4 +1,5 @@
 // graphql/resolvers.js
+// Purpose: Resolvers that fetch via Mongoose with defensive error handling.
 
 import Product from '../models/Product.js';
 
@@ -9,47 +10,53 @@ function escapeRegex(s) {
 
 export const resolvers = {
     Product: {
-        id: (parent) => String(parent._id), // Mapping _id (Mongo) to id (GraphQL)
+      // Map Mongo's _id to GraphQL id 
+      id: (p) => (p._id ? p._id.toString() : p.id),
     },
-    
-    // Query resolvers
+  
     Query: {
-        // Return all products
-        products: async () => {
-            return Product.find({}).lean().exec();
-        },
-        
-        // Search by name 
-        searchProducts: async (_, { name }) => {
-            try {
-                const term = escapeRegex(name || '');
-                const rx = new RegExp(term, 'i'); // case-insensitive
-
-                // debug to server console
-                console.log('searchProducts -> term:', term);
-
-                const results = await Product.find({
-                    $or: [{ name: rx },  { description: rx }],
-                })
-                .lean()
-                .exec();
-
-                console.log('searchProducts -> results:', results.length);
-                return results;
-            } catch (err) {
-                console.error('GraphQL searchProducts error:', err.message);
-                throw new Error('Search failed');
-            }
-        },
-
-        // Price range (if min > max, auto-swap)
-        productsInPriceRange: async (_, { min, max }) => {
-            let a = Number(min), b = Number(max);
-            if (!Number.isFinite(a) || !Number.isFinite(b)) {
-                throw new Error('min and max must be numbers');
-            }
-            if (a > b) [a, b] = [b, a]; // swap if user reversed min and max
-            return Product.find({ price: { $gte: a, $lte: b } }).lean().exec();
-        },
+      products: async () => {
+        try {
+          // lean() returns plain objects
+          return await Product.find({}).lean();
+        } catch (err) {
+          console.error('GraphQL products resolver error:', err);
+          return []; // never crash the transport
+        }
+      },
+  
+      searchProducts: async (_, { name }) => {
+        try {
+          const term = (name || '').trim();
+          if (!term) return [];
+  
+          const rx = new RegExp(escapeForRegex(term), 'i');
+          return await Product.find(
+            { $or: [{ name: rx }, { description: rx }] },
+            null,
+            { lean: true }
+          );
+        } catch (err) {
+          console.error('GraphQL searchProducts resolver error:', err);
+          return [];
+        }
+      },
+  
+      productsInPriceRange: async (_, { min, max }) => {
+        try {
+          // guard numeric inputs
+          const lo = Number.isFinite(min) ? Number(min) : 0;
+          const hi = Number.isFinite(max) ? Number(max) : Number.MAX_SAFE_INTEGER;
+  
+          return await Product.find(
+            { price: { $gte: lo, $lte: hi } },
+            null,
+            { lean: true }
+          );
+        } catch (err) {
+          console.error('GraphQL productsInPriceRange resolver error:', err);
+          return [];
+        }
+      },
     },
-};
+  };

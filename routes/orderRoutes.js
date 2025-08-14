@@ -1,4 +1,6 @@
 // routes/orderRoutes.js
+// Orders API: place order, see my orders, and admin update/delete.
+
 import express from 'express';
 import mongoose from 'mongoose';
 import Order from '../models/Order.js';
@@ -7,170 +9,190 @@ import { ensureAdmin, ensureAuthenticated } from '../middleware/authMiddleware.j
 
 const router = express.Router();
 
-/**
- * POST /api/orders
- * Body: { items: [{ productId, quantity }, ...] }
- * Requires login
- */
+// helper: check items array format
+function normalizeItems(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return { error: 'items must be a non-empty array' };
+  }
+  const ids = [];
+  const out = [];
+  for (let i = 0; i < items.length; i++) {
+    const productId = String(items[i]?.productId || '').trim();
+    const quantity = Number(items[i]?.quantity);
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
+      return { error: `items[${i}].productId is invalid` };
+    }
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      return { error: `items[${i}].quantity must be an integer >= 1` };
+    }
+    ids.push(productId);
+    out.push({ productId, quantity });
+  }
+  if (new Set(ids).size !== ids.length) return { error: 'duplicate productIds not allowed' };
+  return { items: out, ids };
+}
+
+// POST /api/orders  (must be logged in)
+// - validate input
+// - make sure stock is enough (no backorders)
+// - subtract stock and create order in a transaction (all-or-nothing)
 router.post('/', ensureAuthenticated, async (req, res) => {
   try {
-    const { items } = req.body;
+    const { items: raw } = req.body;
+    const check = normalizeItems(raw);
+    if (check.error) return res.status(400).json({ error: check.error });
 
-    if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'items array is required.' });
-    }
-    for (const it of items) {
-      if (!it?.productId || !Number.isInteger(it?.quantity) || it.quantity < 1) {
-        return res.status(400).json({ error: 'Each item needs productId and quantity >= 1.' });
-      }
-    }
+    const { items, ids } = check;
 
-    const ids = items.map(i => String(i.productId));
-    if (new Set(ids).size !== ids.length) {
-      return res.status(400).json({ error: 'Duplicate productIds in items.' });
-    }
-
-    // validate ObjectId format early (nicer 400s)
-    for (const pid of ids) {
-      if (!mongoose.Types.ObjectId.isValid(pid)) {
-        return res.status(400).json({ error: `Invalid productId: ${pid}` });
-      }
-    }
-
-    const products = await Product.find({ _id: { $in: ids } }).exec();
+    // load products we’re buying
+    const products = await Product.find({ _id: { $in: ids } })
+      .select('name price quantityInStock')
+      .lean()
+      .exec();
     if (products.length !== items.length) {
-      return res.status(400).json({ error: 'One or more productIds are invalid.' });
+      return res.status(400).json({ error: 'one or more productIds do not exist' });
     }
 
+    // quick lookup by id
+    const byId = new Map(products.map(p => [String(p._id), p]));
+
+    // build order lines + subtotal, and check stock
     const orderItems = [];
+    let subtotal = 0;
     for (const it of items) {
-      const prod = products.find(p => String(p._id) === String(it.productId));
-      if (!prod) return res.status(400).json({ error: `Product not found: ${it.productId}` });
-
-      if (typeof prod.quantityInStock !== 'number' || prod.quantityInStock < it.quantity) {
-        return res
-          .status(400)
-          .json({ error: `Not enough stock for ${prod.name}. Available: ${prod.quantityInStock}` });
+      const p = byId.get(it.productId);
+      if (!p) return res.status(400).json({ error: `product not found: ${it.productId}` });
+      if (p.quantityInStock < it.quantity) {
+        return res.status(400).json({
+          error: `not enough stock for ${p.name} (have ${p.quantityInStock})`,
+        });
       }
-
+      subtotal += p.price * it.quantity;
       orderItems.push({
-        product: prod._id,
-        name: prod.name,
-        priceAtPurchase: prod.price,
+        product: it.productId,      // ref to Product
+        name: p.name,             
+        priceAtPurchase: p.price,   // snapshot
         quantity: it.quantity,
       });
     }
 
-    const subtotal = orderItems.reduce(
-      (acc, item) => acc + item.priceAtPurchase * item.quantity,
-      0
-    );
+    // do stock updates + order create together (transaction)
+    const session = await mongoose.startSession();
+    let createdId = null;
 
-    const order = await Order.create({
-      user: req.user._id,
-      items: orderItems,
-      subtotal,
-    });
+    try {
+      await session.withTransaction(async () => {
+        // subtract stock, but only if enough remains (race-safe)
+        for (const it of items) {
+          const resu = await Product.updateOne(
+            { _id: it.productId, quantityInStock: { $gte: it.quantity } },
+            { $inc: { quantityInStock: -it.quantity } },
+            { session }
+          );
+          if (resu.modifiedCount === 0) {
+            throw new Error('stock changed while ordering, please try again');
+          }
+        }
 
-    // decrement stock
-    for (const it of items) {
-      await Product.updateOne(
-        { _id: it.productId, quantityInStock: { $gte: it.quantity } },
-        { $inc: { quantityInStock: -it.quantity } }
-      ).exec();
+        // create the order
+        const [doc] = await Order.create(
+          [{ user: req.user._id, items: orderItems, subtotal }],
+          { session }
+        );
+        createdId = doc._id;
+      });
+    } finally {
+      session.endSession();
     }
 
-    return res.status(201).json({
-      message: 'Order placed.',
-      order: {
-        id: order._id,
-        user: String(order.user),
-        items: order.items,
-        subtotal: order.subtotal,
-        status: order.status,
-        createdAt: order.createdAt,
-      },
-    });
+    // return the saved order (cleaned up)
+    const order = await Order.findById(createdId)
+      .populate({ path: 'items.product', select: 'name price' })
+      .select('-__v')
+      .lean({ virtuals: true })
+      .exec();
+
+    return res.status(201).json({ message: 'order placed', order });
   } catch (err) {
-    console.error('Place order error:', err);
-    return res.status(500).json({ error: 'Failed to place order.' });
+    console.error('place order error:', err);
+    return res.status(400).json({ error: err.message || 'failed to place order' });
   }
 });
 
-/**
- * GET /api/orders/mine
- * Requires login
- */
+// GET /api/orders/mine  (must be logged in)
+// - get the current user’s orders (newest first)
 router.get('/mine', ensureAuthenticated, async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user._id })
       .sort({ createdAt: -1 })
-      .lean()
+      .populate({ path: 'items.product', select: 'name price' })
+      .select('-__v')
+      .lean({ virtuals: true })
       .exec();
+
     return res.json({ count: orders.length, orders });
   } catch (err) {
-    console.error('Get my orders error:', err);
-    return res.status(500).json({ error: 'Failed to load your orders.' });
+    console.error('get my orders error:', err);
+    return res.status(500).json({ error: 'failed to load your orders' });
   }
 });
 
-/**
- * PUT /api/orders/:id
- * Update status (admins only)
- */
+// PUT /api/orders/:id  (admin)
+// - update status only
 router.put('/:id', ensureAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
-    const ALLOWED = ['placed', 'processing', 'shipped', 'delivered', 'cancelled'];
+    const OK = ['placed', 'processing', 'shipped', 'delivered', 'cancelled'];
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ error: `Invalid order id: ${id}` });
+      return res.status(400).json({ error: `invalid order id: ${id}` });
     }
-    if (!ALLOWED.includes(status)) {
-      return res.status(400).json({ error: `Invalid status. Allowed: ${ALLOWED.join(', ')}` });
+    if (!OK.includes(status)) {
+      return res.status(400).json({ error: `status must be one of: ${OK.join(', ')}` });
     }
 
-    const updated = await Order.findByIdAndUpdate(
-      id,
-      { status },
-      { new: true, runValidators: true }
-    ).lean();
+    const order = await Order.findByIdAndUpdate(id, { status }, { new: true, runValidators: true })
+      .select('-__v')
+      .lean({ virtuals: true })
+      .exec();
 
-    if (!updated) return res.status(404).json({ error: 'Order not found' });
-    return res.json({ message: 'Order updated.', order: updated });
+    if (!order) return res.status(404).json({ error: 'order not found' });
+    return res.json({ message: 'order updated', order });
   } catch (err) {
-    console.error('Update order error:', err);
-    return res.status(500).json({ error: 'Failed to update order.' });
+    console.error('update order error:', err);
+    return res.status(500).json({ error: 'failed to update order' });
   }
 });
 
-// DELETE /api/orders/:id --> delete and restock (admin only)
+// DELETE /api/orders/:id  (admin)
+// - delete order and put the stock back
 router.delete('/:id', ensureAdmin, async (req, res) => {
-    try {
-        const { id } = req.params;
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            return res.status(400).json({ error: `Invalid order id: ${id}`});
-        }
-
-        const order = await Order.findById(id).lean();
-        if (!order) return res.status(404).json({ error: 'Order not found' });
-
-        // Restock each product from the order
-        if (Array.isArray(order.items) && order.items.length) {
-            const ops = order.items.map(item => ({
-                updateOne: {
-                    filter: { _id: item.product },
-                    update: { $inc: { quantityInStock: item.quantity } }
-                }
-            }));
-            await Product.bulkWrite(ops);
-        }
-        await Order.deleteOne({ _id: id });
-        return res.json({ message: "Order deleted and items restocked." });
-    } catch (err) {
-        console.error('Delete order error:', err);
-        return res.status(500).json({ error: 'Failed to delete order.' });
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: `invalid order id: ${id}` });
     }
-})
+
+    const order = await Order.findById(id).lean().exec();
+    if (!order) return res.status(404).json({ error: 'order not found' });
+
+    if (Array.isArray(order.items) && order.items.length) {
+      const ops = order.items.map(item => ({
+        updateOne: {
+          filter: { _id: item.product },
+          update: { $inc: { quantityInStock: item.quantity } },
+        },
+      }));
+      await Product.bulkWrite(ops);
+    }
+
+    await Order.deleteOne({ _id: id }).exec();
+    return res.json({ message: 'order deleted and stock restored' });
+  } catch (err) {
+    console.error('delete order error:', err);
+    return res.status(500).json({ error: 'failed to delete order' });
+  }
+});
+
 export default router;

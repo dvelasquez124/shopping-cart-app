@@ -1,5 +1,5 @@
 // routes/authRoutes.js
-// Auth endpoints: register, login, logout ( + a handy /me for testing)
+// Auth API: register, login, logout, and a simple /me check.
 
 import express from 'express';
 import bcrypt from 'bcrypt';
@@ -9,115 +9,115 @@ import { ensureAuthenticated, ensureAdmin } from '../middleware/authMiddleware.j
 
 const router = express.Router();
 
-// Small helper: never leak passwordHash back to the client
+// helper: never send passwordHash to the client
 const safeUser = (user) => ({
-    id: user._id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
+  id: user._id,
+  name: user.name,
+  email: user.email,
+  role: user.role,
+  isAdmin: user.role === 'admin' || user.isAdmin === true, 
+  createdAt: user.createdAt,
+  updatedAt: user.updatedAt,
 });
 
 // POST /auth/register
-// Body: { name, email, password, role? }
+// Body: { name, email, password }
+// NOTE: new signups are always customers (we seed the admin)
 router.post('/register', async (req, res) => {
-    try {
-        const { name, email, password, role = 'customer' } = req.body;
-        
-        // Basic validations for a clean submission
-        if (!name || !email || !password) {
-            return res.status(400).json({ error: 'name, email, and password are required.' });
-        }
+  try {
+    const { name, email, password } = req.body;
 
-        const normalizedEmail = email.trim().toLowerCase();
-
-        // Enforce unique email
-        const existing = await User.findOne({ email: normalizedEmail }).exec();
-        if (existing) {
-            return res.status(409).json({ error: 'An account with that email already exists.' });
-        }
-        
-        // Hash password
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        // Create user
-        const newUser = await User.create({ 
-            name,
-            email: normalizedEmail, 
-            passwordHash: hashedPassword, 
-            role, // 'customer' or admin
-        });
-
-        return res.status(201).json({
-            message: 'User registered successfully.',
-            user: safeUser(newUser),
-        });
-    } catch (err) {
-        console.error('Register error:', err);
-        return res.status(500).json({ error: 'Registration failed.' });
+    // basic checks
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'name, email, and password are required.' });
     }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    // unique email
+    const exists = await User.findOne({ email: normalizedEmail }).exec();
+    if (exists) {
+      return res.status(409).json({ error: 'An account with that email already exists.' });
+    }
+
+    // hash password
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    // create user as a customer
+    const newUser = await User.create({
+      name: String(name).trim(),
+      email: normalizedEmail,
+      passwordHash,
+      role: 'customer',
+    });
+
+    return res.status(201).json({
+      message: 'User registered successfully.',
+      user: safeUser(newUser),
+    });
+  } catch (err) {
+    console.error('Register error:', err);
+    return res.status(500).json({ error: 'Registration failed.' });
+  }
 });
 
 // POST /auth/login
 // Body: { email, password }
+// returns JSON (we’ll add the form/redirect version in the views step)
 router.post('/login', (req, res, next) => {
-    // Use a custom callback so we can send clean JSON messages
-    passport.authenticate('local', (err, user, info) => {
-        if (err) {
-            console.error('Login error:', err);
-            return res.status(500).json({ error: 'Login failed' });
-        }
-        if (!user) {
-            // info?.message comes from the strategy ("Incorrect password.")
-            return res.status(400).json({ error: info?.message || 'Invalid credentials.' });
-        }
+  passport.authenticate('local', (err, user, info) => {
+    if (err) {
+      console.error('Login error:', err);
+      return res.status(500).json({ error: 'Login failed.' });
+    }
+    if (!user) {
+      // 401 = unauthorized (bad creds)
+      return res.status(401).json({ error: info?.message || 'Invalid credentials.' });
+    }
 
-        // Establish the session
-        req.login(user, (loginErr) => {
-            if (loginErr) {
-                console.error('Session error:', loginErr);
-                return res.status(500).json({ error: 'Could not establish session.' });
-            }
-            return res.json({
-                message: 'Login successful.',
-                user: safeUser(user),
-            });
-        });
-    })(req, res, next);
+    // create session
+    req.login(user, (loginErr) => {
+      if (loginErr) {
+        console.error('Session error:', loginErr);
+        return res.status(500).json({ error: 'Could not establish session.' });
+      }
+      return res.json({
+        message: 'Login successful.',
+        user: safeUser(user),
+      });
+    });
+  })(req, res, next);
 });
 
 // GET /auth/logout
+// destroys session + clears cookie
 router.get('/logout', (req, res) => {
-    // Passport 0.6+ requires a callback
-    req.logout((err) => {
-        if (err) {
-            console.error('Logout error:', err);
-            return res.status(500).json({ error: 'Logout failed.' })
-        }
-        // Destroy the session cookie for good measure
-        req.session?.destroy(() => {
-            res.clearCookie('connect.sid'); // name used by express-session
-            return res.json({ message: 'Logged out successfully.' });
-        });
-    });
-});
-
-// GET /auth/me (quick sanity check: am I logged in?)
-router.get('/me', (req, res) => {
-    if (!(req.isAuthenticated && req.isAuthenticated())) {
-        return res.status(401).json({ authenticated: false });
+  req.logout((err) => {
+    if (err) {
+      console.error('Logout error:', err);
+      return res.status(500).json({ error: 'Logout failed.' });
     }
-    return res.json({ authenticated: true, user: safeUser(req.user) });
+    req.session?.destroy(() => {
+      res.clearCookie('connect.sid'); // default session cookie name
+      return res.json({ message: 'Logged out successfully.' });
+    });
+  });
 });
 
-// quick sanity checks
+// GET /auth/me
+// quick “am I logged in?”
+router.get('/me', (req, res) => {
+  const ok = typeof req.isAuthenticated === 'function' && req.isAuthenticated();
+  if (!ok) return res.status(401).json({ authenticated: false });
+  return res.json({ authenticated: true, user: safeUser(req.user) });
+});
+
 router.get('/secure-ping', ensureAuthenticated, (req, res) => {
-    res.json({ ok: true, user: safeUser(req.user) });
+  res.json({ ok: true, user: safeUser(req.user) });
 });
 
 router.get('/admin-ping', ensureAdmin, (req, res) => {
-    res.json({ ok: true });
+  res.json({ ok: true });
 });
 
 export default router;

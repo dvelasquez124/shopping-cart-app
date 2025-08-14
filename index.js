@@ -1,3 +1,13 @@
+/**
+ * File: index.js
+ * Purpose: App bootstrap (Express v5, ESM). Connects MongoDB, configures sessions + Passport, mounts REST routes and GraphQL Yoga.
+ * Rubric Coverage: Server-side functionality, Persistence (Mongo/Mongoose), REST (public product endpoints), GraphQL endpoints, PassportJS.
+ * Testing Notes:
+ *  - Postman: GET /api/products, /api/products/search?name=..., /api/products/range?min=&max=
+ *  - GraphiQL: open /graphql and run products/searchProducts/productsInPriceRange
+ *  - Browser: GET / shows the API status page for now (views added later)
+ */
+
 // Import Express, dotenv, mongoose, session, and passport
 import express from 'express';
 import dotenv from 'dotenv';
@@ -35,14 +45,28 @@ mongoose.connect(process.env.MONGO_URI)
 
 // Set up session middleware
 app.use(session({
+    name: 'connect.sid',
     secret: process.env.SESSION_SECRET || 'superSecretSessionKey',
     resave: false,
     saveUninitialized: false,
+    cookie: {
+        httpOnly: true, 
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        // secure: true,
+    },
 }));
 
 // Initialize passport middleware
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Expose auth state to views (used by Handlebars nav/login/logout)
+app.use((req, res, next) => {
+    res.locals.currentUser = req.user || null;
+    res.locals.isAuthenticated = !!req.user;
+    res.locals.isAdmin = !!(req.user && (req.user.role === 'admin' || req.user.isAdmin === true));
+    next();
+});
 
 // Middleware to parse incoming JSON
 app.use(express.json());
@@ -55,9 +79,8 @@ const schema = createSchema({ typeDefs, resolvers });
 // Create Yoga request handler
 const yoga = createYoga({
     schema,
-    graphqlEndpoint: '/graphql', // where the IDE + endpoint live
-    // Pass logged-in user to resolvers
-    context: ({ request }) => ({ user: request.user ?? null }),
+    graphqlEndpoint: '/graphql', 
+    graphiql: true,
 });
 
 // Mount it on Express (for built-in GraphiQL UI)
@@ -79,21 +102,8 @@ app.get('/', (req, res) => {
 });
 
 // Start the server
-// Use enviroment variable or fallback to 3000
+// Use environment variable or fallback to 3000
 const PORT = process.env.PORT || 3000;
-
-// // temp import
-// import Product from './models/Product.js';
-
-// // Test: create a dummy product (not saved yet)
-// const testProduct = new Product({
-//     name: 'Test Product',
-//     description: 'Just for testing',
-//     price: 9.99,
-//     quantityInStock: 100
-// })
-
-// console.log('Product model is working:', testProduct)
 
 // Start the server
 app.listen(PORT, () => {
