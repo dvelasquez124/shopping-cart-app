@@ -1,0 +1,42 @@
+{{!-- Admin: list all users with a link to their orders --}}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h4 mb-0">Admin — Customers</h1>
+  <span class="text-muted small">Signed in as {{currentUser.email}}</span>
+</div>
+
+<div class="mb-3">
+  <a class="btn btn-sm btn-primary" href="/admin/products">Manage Products</a>
+</div>
+
+{{#if hasUsers}}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Role</th>
+          <th>Joined</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each users}}
+          <tr>
+            <td>{{this.name}}</td>
+            <td>{{this.email}}</td>
+            <td><span class="badge bg-secondary text-uppercase">{{this.role}}</span></td>
+            <td>{{this.createdAtFmt}}</td>
+            <td>
+              <a class="btn btn-sm btn-outline-primary" href="/admin/customer/{{this.id}}">
+                View Orders
+              </a>
+            </td>
+          </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+{{else}}
+  <div class="alert alert-info">No users yet.</div>
+{{/if}}

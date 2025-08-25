@@ -1,0 +1,105 @@
+{{!-- Admin: orders for one customer (with update/delete) --}}
+<div class="mb-3 d-flex justify-content-between align-items-center">
+  <div>
+    <a href="/admin" class="btn btn-sm btn-link p-0 me-2">&larr; Back to customers</a>
+    <h1 class="h5 mb-0">Orders for {{user.name}}</h1>
+    <div class="text-muted small">{{user.email}} · Role: {{user.role}}</div>
+  </div>
+  <a class="btn btn-sm btn-outline-secondary" href="/admin/products">Manage Products</a>
+</div>
+
+{{#if hasOrders}}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Placed</th>
+          <th>Items</th>
+          <th>Subtotal</th>
+          <th>Status</th>
+          <th style="width:220px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each orders}}
+          <tr data-id="{{this._id}}">
+            <td>{{this.createdAtFmt}}</td>
+            <td>
+              <ul class="mb-0">
+                {{#each this.items}}
+                  <li>
+                    {{#if this.product}}
+                      {{this.product.name}}
+                    {{else}}
+                      (product removed)
+                    {{/if}}
+                    × {{this.quantity}} — ${{this.priceAtPurchase}}
+                  </li>
+                {{/each}}
+              </ul>
+            </td>
+            <td>${{this.subtotalFmt}}</td>
+            <td>
+              <select class="form-select form-select-sm js-status">
+                {{!-- allowed: placed, processing, shipped, delivered, cancelled --}}
+                <option value="placed" {{#if (eq this.status "placed")}}selected{{/if}}>placed</option>
+                <option value="processing" {{#if (eq this.status "processing")}}selected{{/if}}>processing</option>
+                <option value="shipped" {{#if (eq this.status "shipped")}}selected{{/if}}>shipped</option>
+                <option value="delivered" {{#if (eq this.status "delivered")}}selected{{/if}}>delivered</option>
+                <option value="cancelled" {{#if (eq this.status "cancelled")}}selected{{/if}}>cancelled</option>
+              </select>
+            </td>
+            <td class="d-flex gap-2">
+              <button class="btn btn-sm btn-primary js-save-status">Save Status</button>
+              <button class="btn btn-sm btn-outline-danger js-delete">Delete</button>
+              <span class="small text-muted js-msg"></span>
+            </td>
+          </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+{{else}}
+  <div class="alert alert-info">This customer has no orders.</div>
+{{/if}}
+
+<script>
+  // tiny helpers for inline actions
+  document.querySelectorAll('tr[data-id]').forEach((tr) => {
+    const id = tr.getAttribute('data-id');
+    const statusSel = tr.querySelector('.js-status');
+    const saveBtn = tr.querySelector('.js-save-status');
+    const delBtn = tr.querySelector('.js-delete');
+    const msg = tr.querySelector('.js-msg');
+
+    saveBtn.addEventListener('click', async () => {
+      try {
+        msg.textContent = 'Saving...';
+        const res = await fetch(`/api/orders/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: statusSel.value }),
+        });
+        const out = await res.json();
+        if (!res.ok) throw new Error(out.error || 'Failed to update');
+        msg.textContent = 'Saved ✓';
+        setTimeout(() => (msg.textContent = ''), 1200);
+      } catch (err) {
+        msg.textContent = err.message;
+      }
+    });
+
+    delBtn.addEventListener('click', async () => {
+      if (!confirm('Delete this order? This will restock items.')) return;
+      try {
+        msg.textContent = 'Deleting...';
+        const res = await fetch(`/api/orders/${id}`, { method: 'DELETE' });
+        const out = await res.json();
+        if (!res.ok) throw new Error(out.error || 'Failed to delete');
+        tr.remove();
+      } catch (err) {
+        msg.textContent = err.message;
+      }
+    });
+  });
+</script>
